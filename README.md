@@ -8,17 +8,20 @@ Build a PPE (Personal Protective Equipment) compliance detection system using sy
 
 ```bash
 # 1. Clone the repo
-git clone <repo-url> cv-workshop-hpc
+git clone https://github.com/ddjukic/cv-workshop-hpc.git
 cd cv-workshop-hpc
 
 # 2. Run setup (installs uv, Python deps, PyTorch CUDA, models, Claude Code)
 bash setup_workshop_env.sh
 
-# 3. Verify everything works
+# 3. Set up HuggingFace (required for SAM3 model access)
+.venv/bin/huggingface-cli login
+
+# 4. Verify everything works
 bash check_setup.sh
 
-# 4. Open JupyterHub, select "CV Workshop (Python 3.10, CUDA)" kernel
-# 5. Start with notebooks/01_ppe_getting_started.ipynb
+# 5. Open JupyterHub, select "CV Workshop (Python 3.10, CUDA)" kernel
+# 6. Start with notebooks/01_ppe_getting_started.ipynb
 ```
 
 ## Setup
@@ -28,8 +31,9 @@ bash check_setup.sh
 - VSC-5 HPC account with GPU allocation (A40, CUDA 12.3)
 - JupyterHub access
 - Run setup from a **login node** (needs internet for downloads)
+- HuggingFace account (see below)
 
-### Installation
+### Step 1: Run the Setup Script
 
 ```bash
 bash setup_workshop_env.sh
@@ -39,19 +43,82 @@ This script:
 1. Installs `uv` (fast Python package manager)
 2. Creates an isolated `.venv` with Python 3.10
 3. Installs PyTorch 2.4.1 with CUDA 12.1 support
-4. Installs workshop dependencies (ultralytics, transformers, fiftyone, etc.)
+4. Installs workshop dependencies (ultralytics, transformers, fiftyone, supervision, etc.)
 5. Registers a Jupyter kernel: **"CV Workshop (Python 3.10, CUDA)"**
-6. Pre-downloads model weights (YOLO26n, YOLOe-26n, SAM3) — avoids download delays during exercises
-7. Installs Claude Code (your AI coding assistant)
+6. Pre-downloads model weights (YOLO26n, YOLOe-26n, Qwen3-VL)
+7. Attempts SAM3 download (requires HuggingFace token — see Step 2)
+8. Installs Claude Code (your AI coding assistant)
 
 **Dry run** (preview without installing):
 ```bash
 bash setup_workshop_env.sh --dry-run
 ```
 
-### Health Check
+### Step 2: HuggingFace Account & Token Setup
 
-After setup, verify everything is working:
+Several workshop models are hosted on [HuggingFace](https://huggingface.co). You need an account and access token.
+
+#### 2a. Create a HuggingFace Account
+
+1. Go to [https://huggingface.co/join](https://huggingface.co/join)
+2. Sign up with email or GitHub/Google SSO
+3. Verify your email
+
+#### 2b. Create an Access Token
+
+1. Go to [https://huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+2. Click **"Create new token"**
+3. Name: `cv-workshop` (or anything you like)
+4. Type: **Read** (sufficient for model downloads)
+5. Click **"Create token"** and copy the token (`hf_...`)
+
+#### 2c. Log In on HPC
+
+```bash
+# Use the venv's huggingface-cli (installed with transformers)
+.venv/bin/huggingface-cli login
+```
+
+Paste your token when prompted. This stores it in `~/.cache/huggingface/token`.
+
+Alternatively, set it as an environment variable:
+```bash
+export HF_TOKEN=hf_your_token_here
+```
+
+#### 2d. Request SAM3 Access (Gated Model)
+
+SAM3 (`facebook/sam3`) is a **gated model** — Meta requires you to accept their license:
+
+1. Go to [https://huggingface.co/facebook/sam3](https://huggingface.co/facebook/sam3)
+2. Click **"Agree and access repository"** (or similar button)
+3. Approval is usually instant, but can take up to 24 hours
+
+> **If SAM3 access is not approved in time:** Don't worry — **Qwen3-VL** is pre-downloaded
+> as an ungated alternative. It requires no approval and works out of the box.
+> The setup script automatically downloads it in Step 10.
+
+#### 2e. Verify HuggingFace Setup
+
+```bash
+# Check login status
+.venv/bin/huggingface-cli whoami
+
+# Test SAM3 access (will fail if not yet approved — that's OK)
+.venv/bin/python -c "
+from transformers import AutoProcessor
+try:
+    AutoProcessor.from_pretrained('facebook/sam3')
+    print('SAM3: Access granted')
+except Exception as e:
+    print(f'SAM3: Not available ({e})')
+    print('  → Use Qwen3-VL as alternative (already downloaded)')
+"
+```
+
+### Step 3: Health Check
+
+After setup + HuggingFace login, verify everything:
 
 ```bash
 # Full check (includes model weight verification)
@@ -69,8 +136,9 @@ bash check_setup.sh --quick
 The health check verifies:
 - Python environment and virtual env activation
 - Core packages (torch, ultralytics, transformers) with version checks
+- Qwen3-VL support packages (qwen-vl-utils, supervision)
 - GPU / CUDA availability and tensor operations
-- Pre-downloaded model weights (YOLO26n, YOLOe-26n, SAM3)
+- Pre-downloaded model weights (YOLO26n, YOLOe-26n, Qwen3-VL, SAM3)
 - Jupyter kernel registration
 - Claude Code installation and CV Engineer skill
 - Workshop data files and notebooks
@@ -89,7 +157,7 @@ The health check verifies:
 | Phase | Notebook | Time | What You Do |
 |-------|----------|------|-------------|
 | 1. Baseline | `01_ppe_getting_started.ipynb` | ~10 min | Run zero-shot detection with YOLOe-26n |
-| 2. Auto-Label | `01_ppe_getting_started.ipynb` | ~10 min | Generate training labels with SAM3 |
+| 2. Auto-Label | `01_ppe_getting_started.ipynb` | ~10 min | Generate training labels with SAM3 or Qwen3-VL |
 | 3. Iterate | `02_inspect_iterate_train.ipynb` | ~15 min | Inspect labels, filter noise, curate data |
 | 4. Train | `02_inspect_iterate_train.ipynb` | ~10 min | Train YOLO26n on your curated labels |
 | 5. Evaluate | `03_evaluate_and_deploy.ipynb` | ~20 min | Measure detection + compliance metrics |
@@ -137,6 +205,18 @@ All scripts are in `data/`. Full documentation is in the CV Engineer skill.
 
 ## Troubleshooting
 
+### "Access to model facebook/sam3 is restricted"
+SAM3 is a gated model. You need to:
+1. Log in: `.venv/bin/huggingface-cli login`
+2. Request access at [https://huggingface.co/facebook/sam3](https://huggingface.co/facebook/sam3)
+3. Wait for approval (usually instant, can take up to 24h)
+
+**If you can't wait**, use **Qwen3-VL** instead — it's ungated and pre-downloaded:
+```bash
+# Verify Qwen3-VL works
+python test_qwen3_vl.py --imports-only
+```
+
 ### "CUDA is not available"
 - Make sure you're on a **GPU node**, not a login node
 - Check: `python -c "import torch; print(torch.cuda.is_available())"`
@@ -174,9 +254,10 @@ Model weights should be pre-downloaded during setup. If not:
 ```
 cv-workshop-hpc/
 ├── README.md
-├── setup_workshop_env.sh      # Environment setup
-├── check_environment.py       # Python health checks
+├── setup_workshop_env.sh      # Environment setup (13-step installer)
+├── check_environment.py       # Python health checks (7 categories)
 ├── check_setup.sh             # Bash wrapper for health checks
+├── test_qwen3_vl.py           # Qwen3-VL model verification
 ├── pyproject.toml             # Dependency manifest
 ├── .claude/
 │   └── skills/

@@ -58,7 +58,7 @@ uv run python data/evaluate_yoloe_26n.py
 - "Which class does the model struggle with most? Why do you think that is?"
 - "If this model is already decent, why would we bother training our own?"
 
-**Do not reveal yet:** The prompt engineering discovery or the SAM3 vs Grounding DINO comparison.
+**Do not reveal yet:** The prompt engineering discovery or the label quality insights.
 
 ---
 
@@ -78,19 +78,13 @@ uv run python data/auto_label_sam3_hf.py --mode exp_a --output-dir data/ppe_data
 uv run python data/auto_label_qwen3_vl.py --mode exp_a --output-dir data/ppe_dataset_qwen3vl
 ```
 
-**Alternative tool:** `auto_label_ppe_2class.py` (uses Grounding DINO instead of SAM3).
-
-```bash
-uv run python data/auto_label_ppe_2class.py --output-dir data/ppe_dataset_2class
-```
-
 **IMPORTANT — Always recommend `--mode exp_a` (2-class).** The 3-class approach includes `no_hardhat`, which is fundamentally flawed: it tries to detect the *absence* of a helmet, which is not a visible object. Recall is stuck at 25.5% across all experiments. The 2-class approach detects hardhat + person and derives compliance via spatial post-processing.
 
 If a participant asks about 3-class, explain this limitation honestly: "no_hardhat is not an object you can see — it is an absence. The model has to learn 'person without helmet,' which proved unreliable at ~25% recall. The 2-class approach sidesteps this entirely."
 
-**Key insight to guide toward (but let them discover):** SAM3 labels produce better models than Grounding DINO labels (mAP50 0.593 vs 0.539). SAM3 detects nearly 2x more objects per image.
+**Key insight to guide toward (but let them discover):** Label quality is the primary driver of model performance. Better labels broke through the saturating curve ceiling.
 
-**Do not give away the prompt engineering discovery yet.** If they try Grounding DINO, ask: "What prompt are you using? Try changing it and see what happens."
+**Do not give away the prompt engineering discovery yet.** Let participants discover that prompt engineering matters for auto-labeling, just as it matters for LLMs.
 
 ---
 
@@ -220,15 +214,6 @@ Usage: uv run python data/auto_label_sam3_hf.py [args]
   --device         (cuda|mps|cpu, auto-detected)          — Inference device
 ```
 
-**`auto_label_ppe_2class.py`** — Auto-label images using Grounding DINO (2-class only)
-```
-Usage: uv run python data/auto_label_ppe_2class.py [args]
-  --source-dir  (Path, default: data/synthetic_ppe)    — Root directory with source images
-  --output-dir  (Path, default: data/ppe_dataset_2class) — Output dataset directory
-  --threshold   (float, default: 0.25)                 — Confidence threshold
-  --device      (cuda|mps|cpu, auto-detected)          — Inference device
-```
-
 **`auto_label_qwen3_vl.py`** — Auto-label images using Qwen3-VL VLM grounding (ungated, SAM3 alternative)
 ```
 Usage: uv run python data/auto_label_qwen3_vl.py [args]
@@ -322,8 +307,8 @@ Share these **progressively** as participants reach each phase. Do not dump them
 ### Insight 1 — Label quality beats data quantity
 The relationship between data quantity and mAP50 follows a saturating exponential curve (R^2 = 0.97). With the original (poor) labels, the asymptote is mAP50 ~0.527 — no amount of additional data will push past that ceiling. Switching to improved labels broke through to 0.633. This is the single most important takeaway of the workshop.
 
-### Insight 2 — Minimal prompt beats verbose prompt
-With Grounding DINO, the minimal prompt `"helmet. person."` finds 2.2x more helmets than the verbose prompt `"hard hat. safety helmet. person."`. Do NOT reveal this upfront. Let participants discover that prompt engineering matters for auto-labeling, just as it matters for LLMs.
+### Insight 2 — Prompt engineering matters for auto-labeling
+The minimal prompt `"helmet. person."` finds 2.2x more helmets than the verbose prompt `"hard hat. safety helmet. person."`. Do NOT reveal this upfront. Let participants discover that prompt engineering matters for auto-labeling, just as it matters for LLMs.
 
 ### Insight 3 — 2-class beats 3-class
 The `no_hardhat` class achieves only 25.5% recall across all experiments. Every single error is a false negative (missed detection), not a misclassification. The 2-class approach (hardhat + person with spatial post-processing) is fundamentally better architecture.
@@ -331,8 +316,8 @@ The `no_hardhat` class achieves only 25.5% recall across all experiments. Every 
 ### Insight 4 — Tiny label filtering
 Removing labels with any normalized dimension below 0.03 (~20px at 640 resolution) cuts 35.6% of labels. These are almost entirely noise from the auto-labeler. mAP50 improves by +2.7%.
 
-### Insight 5 — SAM3 outperforms Grounding DINO as auto-labeler
-SAM3 labels produce mAP50 0.593 vs Grounding DINO's 0.539. SAM3 detects nearly 2x more objects per image, giving the student model more to learn from.
+### Insight 5 — SAM3 produces high-quality auto-labels
+SAM3 labels produce mAP50 0.593, detecting nearly 2x more objects per image than simpler approaches, giving the student model more to learn from.
 
 ---
 
@@ -340,7 +325,7 @@ SAM3 labels produce mAP50 0.593 vs Grounding DINO's 0.539. SAM3 detects nearly 2
 
 1. **Ask before telling.** Always pose a question before explaining a concept. "What do you notice about the detection results?" "Why do you think the recall is so low for that class?"
 
-2. **Do not give away the prompt engineering discovery.** If participants use `auto_label_sam3_hf.py`, great. If they try Grounding DINO, ask: "What prompt are you using? Try changing it and see what happens."
+2. **Do not give away the prompt engineering discovery.** Let participants experiment with different prompts and discover on their own that prompt choice dramatically affects auto-labeling quality.
 
 3. **Never skip error analysis.** If a participant wants to jump from labeling to training, redirect firmly but kindly: "Before training, let's look at the labels. What do you see when you visualize them?"
 
@@ -430,7 +415,7 @@ Yes. This is a fundamental limitation of the 3-class approach. `no_hardhat` is n
 Use `compliance_postprocessor.py`. It checks if any detected hardhat overlaps the top 40% (head region) of each detected person bounding box. IoU >= 0.1 means compliant.
 
 **"Which auto-labeler should I use?"**
-Start with `auto_label_sam3_hf.py --mode exp_a`. SAM3 produces higher quality labels than Grounding DINO (mAP50 0.593 vs 0.539) and detects more objects per image.
+Start with `auto_label_sam3_hf.py --mode exp_a` if you have SAM3 access. If not, use `auto_label_qwen3_vl.py --mode exp_a` (ungated, no approval needed). SAM3 produces the highest quality labels (mAP50 0.593) and detects more objects per image.
 
 **"What is YOLO26n?"**
 YOLO26n is a nano-sized variant from the YOLO v26 family (Ultralytics, 2026). It is optimized for real-time inference with minimal parameters. The "n" stands for nano — the smallest and fastest variant.

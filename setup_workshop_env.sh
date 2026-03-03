@@ -114,7 +114,7 @@ echo ""
 WORKSHOP_DIR="${WORKSHOP_DIR:-${SCRIPT_DIR}}"
 
 # ============================================================================
-# Step 1/12 — Install uv
+# Step 1/13 — Install uv
 # ============================================================================
 step "1" "Install uv (fast Python package manager)"
 
@@ -142,7 +142,7 @@ fi
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # ============================================================================
-# Step 2/12 — Configure UV_CACHE_DIR
+# Step 2/13 — Configure UV_CACHE_DIR
 # ============================================================================
 step "2" "Configure UV_CACHE_DIR (avoid filling home quota)"
 
@@ -158,8 +158,14 @@ run mkdir -p "${UV_CACHE_DIR}"
 ok "UV_CACHE_DIR=${UV_CACHE_DIR}"
 record "ok"
 
+# Tell uv to always resolve PyTorch from the CUDA 12.1 index.
+# Without this, transitive torch dependencies (from ultralytics, transformers)
+# get resolved from PyPI, overwriting the CUDA wheels with a broken CPU build.
+export UV_TORCH_BACKEND=cu121
+info "UV_TORCH_BACKEND=cu121 (ensures CUDA wheels for PyTorch)"
+
 # ============================================================================
-# Step 3/12 — Create virtual environment
+# Step 3/13 — Create virtual environment
 # ============================================================================
 step "3" "Create Python 3.10 virtual environment (.venv)"
 
@@ -188,35 +194,19 @@ fi
 VENV_PYTHON="${VENV_DIR}/bin/python"
 
 # ============================================================================
-# Step 4/12 — Install PyTorch (CUDA 12.1)
+# Step 4/13 — Install PyTorch + all workshop dependencies (single resolution)
 # ============================================================================
-step "4" "Install PyTorch 2.4.1 + torchvision 0.19.1 (CUDA 12.1)"
+step "4" "Install PyTorch 2.4.1 (CUDA 12.1) + workshop dependencies"
 
-if ! $DRY_RUN && "${VENV_PYTHON}" -c "import torch; print(torch.__version__)" 2>/dev/null | grep -q "2.4.1"; then
-    ok "PyTorch 2.4.1 already installed"
-    record "skip"
-else
-    info "Installing PyTorch (this downloads ~2.5 GB, may take a few minutes)..."
-    if run uv pip install \
-        --python "${VENV_PYTHON}" \
-        "torch==2.4.1" \
-        "torchvision==0.19.1" \
-        --index-url "https://download.pytorch.org/whl/cu121"; then
-        ok "PyTorch installed"
-        record "ok"
-    else
-        fail "PyTorch installation failed"
-        record "fail"
-        exit 1
-    fi
-fi
+# Install EVERYTHING in a single uv pip install so dependency resolution
+# sees torch==2.4.1 alongside ultralytics/transformers and resolves consistently.
+# UV_TORCH_BACKEND=cu121 (set above) tells uv to use cu121 wheels for PyTorch.
+# --extra-index-url is belt-and-suspenders: ensures cu121 index is available
+# even if UV_TORCH_BACKEND is not supported by the installed uv version.
 
-# ============================================================================
-# Step 5/12 — Install workshop dependencies
-# ============================================================================
-step "5" "Install workshop Python dependencies"
-
-WORKSHOP_DEPS=(
+ALL_DEPS=(
+    "torch==2.4.1"
+    "torchvision==0.19.1"
     "ultralytics>=8.4.19"
     "transformers>=5.0"
     "accelerate"
@@ -236,18 +226,74 @@ WORKSHOP_DEPS=(
     "packaging"
 )
 
-info "Installing ${#WORKSHOP_DEPS[@]} packages..."
-if run uv pip install --python "${VENV_PYTHON}" "${WORKSHOP_DEPS[@]}"; then
-    ok "Workshop dependencies installed"
-    record "ok"
+info "Installing PyTorch + ${#ALL_DEPS[@]} packages (this may take several minutes)..."
+if run uv pip install \
+    --python "${VENV_PYTHON}" \
+    --extra-index-url "https://download.pytorch.org/whl/cu121" \
+    "${ALL_DEPS[@]}"; then
+    ok "All packages installed"
 else
-    fail "Some workshop dependencies failed to install"
+    fail "Package installation failed"
     record "fail"
     exit 1
 fi
 
+# Verify torch is intact (catches cu121 vs CPU wheel conflicts)
+if ! $DRY_RUN; then
+    if "${VENV_PYTHON}" -c "import torch; print(f'torch {torch.__version__}'); assert hasattr(torch, 'save'), 'torch.save missing'" 2>/dev/null; then
+        ok "PyTorch verified (has core attributes)"
+        record "ok"
+    else
+        warn "PyTorch may be corrupted — reinstalling from cu121 index..."
+        if run uv pip install \
+            --python "${VENV_PYTHON}" \
+            --reinstall-package torch --reinstall-package torchvision \
+            "torch==2.4.1" "torchvision==0.19.1" \
+            --index-url "https://download.pytorch.org/whl/cu121"; then
+            ok "PyTorch reinstalled from cu121"
+            record "ok"
+        else
+            fail "PyTorch repair failed"
+            record "fail"
+            exit 1
+        fi
+    fi
+else
+    record "ok"
+fi
+
 # ============================================================================
-# Step 6/12 — Register Jupyter kernel
+# Step 5/13 — Verify torch integration with ultralytics and transformers
+# ============================================================================
+step "5" "Verify torch + ultralytics + transformers integration"
+
+if $DRY_RUN; then
+    echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c '<integration test>'"
+    record "ok"
+else
+    if "${VENV_PYTHON}" -c "
+import torch
+assert hasattr(torch, '__version__'), 'torch.__version__ missing'
+assert hasattr(torch, 'save'), 'torch.save missing'
+print(f'torch {torch.__version__} OK')
+
+import ultralytics
+print(f'ultralytics {ultralytics.__version__} OK')
+
+import transformers
+print(f'transformers {transformers.__version__} OK')
+" 2>&1; then
+        ok "Core packages verified"
+        record "ok"
+    else
+        fail "Integration check failed — see errors above"
+        record "fail"
+        # Non-fatal: continue with remaining steps
+    fi
+fi
+
+# ============================================================================
+# Step 6/13 — Register Jupyter kernel
 # ============================================================================
 step "6" "Register IPython kernel for JupyterHub"
 
@@ -272,7 +318,7 @@ else
 fi
 
 # ============================================================================
-# Step 7/12 — Pre-download YOLO26n weights
+# Step 7/13 — Pre-download YOLO26n weights
 # ============================================================================
 step "7" "Pre-download YOLO26n model weights"
 
@@ -295,7 +341,7 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 8/12 — Pre-download YOLOe-26n-seg weights
+# Step 8/13 — Pre-download YOLOe-26n-seg weights
 # ============================================================================
 step "8" "Pre-download YOLOe-26n-seg model weights"
 
@@ -526,8 +572,8 @@ STEP_NAMES=(
     "Install uv"
     "Configure UV_CACHE_DIR"
     "Create virtual environment"
-    "Install PyTorch"
-    "Install workshop deps"
+    "Install PyTorch + workshop deps"
+    "Verify torch integration"
     "Register Jupyter kernel"
     "Pre-download YOLO26n"
     "Pre-download YOLOe-26n-seg"

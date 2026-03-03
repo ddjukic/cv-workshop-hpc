@@ -194,7 +194,6 @@ All scripts are in `data/`. Full documentation is in the CV Engineer skill.
 | Script | Purpose |
 |--------|---------|
 | `auto_label_sam3_hf.py` | Auto-label images using SAM3 (HuggingFace) |
-| `auto_label_ppe_2class.py` | Auto-label using Grounding DINO (2-class) |
 | `filter_tiny_labels.py` | Remove noisy tiny labels |
 | `visualize_gt_annotations.py` | Visualize bounding boxes on images |
 | `train_baseline_ppe.py` | Train YOLO26n baseline |

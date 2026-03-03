@@ -272,9 +272,9 @@ cv-workshop-hpc/
 ├── .claude/
 │   └── skills/
 │       └── cv-engineer/
-│           └── CLAUDE.md      # Claude Code CV engineer skill
+│           └── SKILL.md       # Claude Code CV engineer skill
 ├── data/
-│   ├── synthetic_ppe/         # 91 source images (11 categories)
+│   ├── synthetic_ppe/         # 91 source images (9 categories)
 │   ├── auto_label_sam3_hf.py  # Auto-labeling scripts
 │   ├── train_baseline_ppe.py  # Training script
 │   ├── ...                    # Other tools

@@ -474,8 +474,8 @@ fi
 # ============================================================================
 step "12" "Copy CV engineer skill to user config"
 
-SKILL_SRC="${WORKSHOP_DIR}/.claude/skills/cv-engineer/CLAUDE.md"
-SKILL_DST="${HOME}/.claude/skills/cv-engineer/CLAUDE.md"
+SKILL_SRC="${WORKSHOP_DIR}/.claude/skills/cv-engineer/SKILL.md"
+SKILL_DST="${HOME}/.claude/skills/cv-engineer/SKILL.md"
 
 if [[ -f "${SKILL_DST}" ]]; then
     ok "CV engineer skill already present at ${SKILL_DST}"

@@ -158,7 +158,7 @@ def check_gpu() -> list[bool]:
 
         if cuda_available:
             gpu_name = torch.cuda.get_device_name(0)
-            gpu_mem = torch.cuda.get_device_properties(0).total_mem / (1024 ** 3)
+            gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024 ** 3)
             info("GPU device", f"{gpu_name} ({gpu_mem:.1f} GB)")
             info("CUDA version", torch.version.cuda)
 
@@ -276,8 +276,8 @@ def check_claude_code() -> list[bool]:
 
     # Check CV engineer skill
     skill_locations = [
-        WORKSHOP_DIR / ".claude" / "skills" / "cv-engineer" / "CLAUDE.md",
-        Path.home() / ".claude" / "skills" / "cv-engineer" / "CLAUDE.md",
+        WORKSHOP_DIR / ".claude" / "skills" / "cv-engineer" / "SKILL.md",
+        Path.home() / ".claude" / "skills" / "cv-engineer" / "SKILL.md",
     ]
     found = False
     for loc in skill_locations:

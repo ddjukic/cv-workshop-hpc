@@ -18,7 +18,7 @@ Core behaviors:
 | Detail | Value |
 |--------|-------|
 | **Date** | March 4, 2026 (Day 2 of a 2-day workshop) |
-| **Dataset** | 91 synthetic construction site images across 11 scene categories |
+| **Dataset** | 91 synthetic construction site images across 9 scene categories |
 | **Goal** | Build a PPE compliance detector that runs at 30+ FPS |
 | **Approach** | Foundation model (SAM3 / YOLOE) auto-label --> train YOLO26n --> post-process compliance |
 | **Working directory** | Scripts in `data/`, notebooks in `notebooks/` |
@@ -348,7 +348,7 @@ SAM3 labels produce mAP50 0.593, detecting nearly 2x more objects per image than
 ## Dataset Structure Reference
 
 ```
-data/synthetic_ppe/              # 91 source images (11 scene categories)
+data/synthetic_ppe/              # 91 source images (9 scene categories)
   cctv/
   mixed_compliance/
   edge_cases/

@@ -36,7 +36,7 @@ NC='\033[0m' # No Color
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=false
-TOTAL_STEPS=12
+TOTAL_STEPS=13
 STEP_RESULTS=()   # Tracks "ok" / "skip" / "warn" / "fail" per step
 START_TIME="$(date +%s)"
 
@@ -218,8 +218,10 @@ step "5" "Install workshop Python dependencies"
 
 WORKSHOP_DEPS=(
     "ultralytics>=8.4.19"
-    "transformers>=4.40"
+    "transformers>=5.0"
     "accelerate"
+    "qwen-vl-utils>=0.0.14"
+    "supervision>=0.27.0"
     "fiftyone"
     "mlflow"
     "ipykernel"
@@ -231,6 +233,7 @@ WORKSHOP_DEPS=(
     "opencv-python-headless"
     "pyyaml"
     "tqdm"
+    "packaging"
 )
 
 info "Installing ${#WORKSHOP_DEPS[@]} packages..."
@@ -315,15 +318,21 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 9/12 — Pre-download SAM3 (HuggingFace)
+# Step 9/13 — Pre-download SAM3 (HuggingFace) — gated model, may fail
 # ============================================================================
-step "9" "Pre-download SAM3 model from HuggingFace"
+step "9" "Pre-download SAM3 model from HuggingFace (gated — may require approval)"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForMaskGeneration; ...'"
     record "ok"
 else
-    info "This may take several minutes (large model download)..."
+    info "SAM3 is a GATED model — you may need to:"
+    info "  1. Create a HuggingFace account at https://huggingface.co"
+    info "  2. Request access at https://huggingface.co/facebook/sam3"
+    info "  3. Set HF_TOKEN: export HF_TOKEN=your_token_here"
+    info "If SAM3 fails, Qwen3-VL (Step 10) is the ungated alternative."
+    echo ""
+    info "Attempting SAM3 download..."
     if "${VENV_PYTHON}" -c "
 from transformers import AutoProcessor, AutoModelForMaskGeneration
 print('Downloading SAM3 processor...')
@@ -335,15 +344,43 @@ print('Done.')
         ok "SAM3 model and processor downloaded"
         record "ok"
     else
-        warn "SAM3 download failed — check HuggingFace access (may need token)"
+        warn "SAM3 download failed — this is expected if you don't have HF access"
+        warn "Use Qwen3-VL (Step 10) as the auto-labeling alternative"
         record "warn"
     fi
 fi
 
 # ============================================================================
-# Step 10/12 — Install Node.js + Claude Code
+# Step 10/13 — Pre-download Qwen3-VL (ungated SAM3 alternative)
 # ============================================================================
-step "10" "Install Node.js and Claude Code (optional)"
+step "10" "Pre-download Qwen3-VL-8B-Instruct (ungated, no approval needed)"
+
+if $DRY_RUN; then
+    echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForImageTextToText; ...'"
+    record "ok"
+else
+    info "Downloading Qwen3-VL-8B (~16 GB). This may take several minutes..."
+    if "${VENV_PYTHON}" -c "
+from transformers import AutoProcessor, AutoModelForImageTextToText
+model_id = 'Qwen/Qwen3-VL-8B-Instruct'
+print(f'Downloading {model_id} processor...')
+AutoProcessor.from_pretrained(model_id)
+print(f'Downloading {model_id} model...')
+AutoModelForImageTextToText.from_pretrained(model_id)
+print('Done.')
+" 2>&1; then
+        ok "Qwen3-VL-8B-Instruct downloaded"
+        record "ok"
+    else
+        warn "Qwen3-VL download failed (will retry on first use)"
+        record "warn"
+    fi
+fi
+
+# ============================================================================
+# Step 11/13 — Install Node.js + Claude Code
+# ============================================================================
+step "11" "Install Node.js and Claude Code (optional)"
 
 CLAUDE_CODE_OK=false
 
@@ -387,9 +424,9 @@ else
 fi
 
 # ============================================================================
-# Step 11/12 — Copy CV engineer skill
+# Step 12/13 — Copy CV engineer skill
 # ============================================================================
-step "11" "Copy CV engineer skill to user config"
+step "12" "Copy CV engineer skill to user config"
 
 SKILL_SRC="${WORKSHOP_DIR}/.claude/skills/cv-engineer/CLAUDE.md"
 SKILL_DST="${HOME}/.claude/skills/cv-engineer/CLAUDE.md"
@@ -412,9 +449,9 @@ else
 fi
 
 # ============================================================================
-# Step 12/12 — Smoke test
+# Step 13/13 — Smoke test
 # ============================================================================
-step "12" "Smoke test — verify installation"
+step "13" "Smoke test — verify installation"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c '<smoke test snippet>'"
@@ -494,7 +531,8 @@ STEP_NAMES=(
     "Register Jupyter kernel"
     "Pre-download YOLO26n"
     "Pre-download YOLOe-26n-seg"
-    "Pre-download SAM3"
+    "Pre-download SAM3 (gated)"
+    "Pre-download Qwen3-VL (ungated)"
     "Install Node.js + Claude Code"
     "Copy CV engineer skill"
     "Smoke test"

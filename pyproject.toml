@@ -6,11 +6,15 @@ requires-python = ">=3.10,<3.11"
 
 dependencies = [
     # Core ML
-    "torch==2.4.1",
-    "torchvision==0.19.1",
+    # NOTE: torch + torchvision are installed separately by setup_workshop_env.sh
+    # from the CUDA 12.1 PyTorch index. Pins here are for documentation only.
+    "torch>=2.4.0",
+    "torchvision>=0.19.0",
     "ultralytics>=8.4.19",
-    "transformers>=4.40",
+    "transformers>=5.0",
     "accelerate",
+    "qwen-vl-utils>=0.0.14",
+    "supervision>=0.27.0",
 
     # Experiment tracking & analysis
     "fiftyone",

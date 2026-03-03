@@ -110,6 +110,31 @@ def check_core_packages() -> list[bool]:
         except Exception as e:
             results.append(check(pkg, False, str(e)))
 
+    # Qwen3-VL support (SAM3 fallback)
+    qwen_pkgs = {
+        "qwen_vl_utils": None,
+        "supervision": "0.27.0",
+    }
+    for pkg, min_ver in qwen_pkgs.items():
+        try:
+            mod = importlib.import_module(pkg)
+            version = getattr(mod, "__version__", "installed")
+            if min_ver:
+                from packaging.version import Version
+                passed = Version(version) >= Version(min_ver)
+            else:
+                passed = True
+            results.append(check(f"{pkg} (Qwen3-VL support)", passed, f"v{version}"))
+        except ImportError:
+            results.append(check(f"{pkg} (Qwen3-VL support)", False, "NOT INSTALLED"))
+
+    # Verify Qwen3-VL model class is available in transformers
+    try:
+        from transformers import AutoModelForImageTextToText
+        info("AutoModelForImageTextToText", "available (Qwen3-VL compatible)")
+    except ImportError:
+        warn("AutoModelForImageTextToText", "not available — update transformers>=5.0")
+
     optional = ["fiftyone", "mlflow", "accelerate", "ipywidgets", "cv2"]
     for pkg in optional:
         try:
@@ -173,22 +198,29 @@ def check_model_weights() -> list[bool]:
         except Exception as e:
             results.append(check(model_name, False, f"download needed: {e}"))
 
-    # SAM3 HuggingFace model
+    # SAM3 HuggingFace model (gated — may not be available)
     try:
         from transformers import AutoProcessor
-        cache_dir = os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")
-        # Check if model files exist in cache without loading the full model
         processor = AutoProcessor.from_pretrained("facebook/sam3", local_files_only=True)
         results.append(check("SAM3 (facebook/sam3)", True, "cached"))
         del processor
     except Exception:
-        try:
-            # Try loading — will download if not cached
-            from transformers import AutoProcessor
-            processor = AutoProcessor.from_pretrained("facebook/sam3", local_files_only=True)
-            results.append(check("SAM3 (facebook/sam3)", True, "cached"))
-        except Exception:
-            results.append(check("SAM3 (facebook/sam3)", False, "not cached — run setup script"))
+        warn("SAM3 (facebook/sam3)", "not cached — gated model, needs HF approval")
+        info("  → Use Qwen3-VL as alternative", "(ungated, no approval needed)")
+
+    # Qwen3-VL (ungated alternative to SAM3)
+    try:
+        from transformers import AutoProcessor
+        processor = AutoProcessor.from_pretrained(
+            "Qwen/Qwen3-VL-8B-Instruct", local_files_only=True
+        )
+        results.append(check("Qwen3-VL-8B-Instruct", True, "cached"))
+        del processor
+    except Exception:
+        results.append(check(
+            "Qwen3-VL-8B-Instruct", False,
+            "not cached — run: python test_qwen3_vl.py"
+        ))
 
     return results
 

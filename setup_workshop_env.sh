@@ -36,7 +36,7 @@ NC='\033[0m' # No Color
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=false
-TOTAL_STEPS=13
+TOTAL_STEPS=14
 STEP_RESULTS=()   # Tracks "ok" / "skip" / "warn" / "fail" per step
 START_TIME="$(date +%s)"
 
@@ -114,7 +114,7 @@ echo ""
 WORKSHOP_DIR="${WORKSHOP_DIR:-${SCRIPT_DIR}}"
 
 # ============================================================================
-# Step 1/13 — Install uv
+# Step 1/14 — Install uv
 # ============================================================================
 step "1" "Install uv (fast Python package manager)"
 
@@ -142,9 +142,38 @@ fi
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # ============================================================================
-# Step 2/13 — Configure UV_CACHE_DIR
+# Step 2/14 — Install HuggingFace CLI (standalone, not pip)
 # ============================================================================
-step "2" "Configure UV_CACHE_DIR (avoid filling home quota)"
+step "2" "Install HuggingFace CLI (standalone installer)"
+
+# The venv-installed huggingface-cli often doesn't work (missing from .venv/bin/).
+# The standalone installer places it in ~/.local/bin, which is on PATH.
+if command -v huggingface-cli &>/dev/null; then
+    ok "huggingface-cli already installed: $(command -v huggingface-cli)"
+    record "skip"
+else
+    info "Installing HuggingFace CLI via official standalone installer..."
+    if run bash -c 'curl -LsSf https://hf.co/cli/install.sh | bash'; then
+        export PATH="${HOME}/.local/bin:${PATH}"
+        if ! $DRY_RUN && command -v huggingface-cli &>/dev/null; then
+            ok "huggingface-cli installed: $(command -v huggingface-cli)"
+        else
+            ok "huggingface-cli installer ran (may need shell restart)"
+        fi
+        record "ok"
+    else
+        warn "HuggingFace CLI install failed — you can install it manually later:"
+        warn "  curl -LsSf https://hf.co/cli/install.sh | bash"
+        record "warn"
+    fi
+fi
+
+info "After setup, log in with: huggingface-cli login"
+
+# ============================================================================
+# Step 3/14 — Configure UV_CACHE_DIR
+# ============================================================================
+step "3" "Configure UV_CACHE_DIR (avoid filling home quota)"
 
 if [[ -n "${SCRATCH:-}" ]] && [[ -d "${SCRATCH}" ]]; then
     export UV_CACHE_DIR="${SCRATCH}/uv_cache"
@@ -165,9 +194,9 @@ export UV_TORCH_BACKEND=cu121
 info "UV_TORCH_BACKEND=cu121 (ensures CUDA wheels for PyTorch)"
 
 # ============================================================================
-# Step 3/13 — Create virtual environment
+# Step 4/14 — Create virtual environment
 # ============================================================================
-step "3" "Create Python 3.10 virtual environment (.venv)"
+step "4" "Create Python 3.10 virtual environment (.venv)"
 
 VENV_DIR="${WORKSHOP_DIR}/.venv"
 
@@ -194,9 +223,9 @@ fi
 VENV_PYTHON="${VENV_DIR}/bin/python"
 
 # ============================================================================
-# Step 4/13 — Install PyTorch + all workshop dependencies (single resolution)
+# Step 5/14 — Install PyTorch + all workshop dependencies (single resolution)
 # ============================================================================
-step "4" "Install PyTorch 2.4.1 (CUDA 12.1) + workshop dependencies"
+step "5" "Install PyTorch 2.4.1 (CUDA 12.1) + workshop dependencies"
 
 # Install EVERYTHING in a single uv pip install so dependency resolution
 # sees torch==2.4.1 alongside ultralytics/transformers and resolves consistently.
@@ -263,9 +292,9 @@ else
 fi
 
 # ============================================================================
-# Step 5/13 — Verify torch integration with ultralytics and transformers
+# Step 6/14 — Verify torch integration with ultralytics and transformers
 # ============================================================================
-step "5" "Verify torch + ultralytics + transformers integration"
+step "6" "Verify torch + ultralytics + transformers integration"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c '<integration test>'"
@@ -293,9 +322,9 @@ print(f'transformers {transformers.__version__} OK')
 fi
 
 # ============================================================================
-# Step 6/13 — Register Jupyter kernel
+# Step 7/14 — Register Jupyter kernel
 # ============================================================================
-step "6" "Register IPython kernel for JupyterHub"
+step "7" "Register IPython kernel for JupyterHub"
 
 KERNEL_DIR="${HOME}/.local/share/jupyter/kernels/cv-workshop"
 
@@ -318,9 +347,9 @@ else
 fi
 
 # ============================================================================
-# Step 7/13 — Pre-download YOLO26n weights
+# Step 8/14 — Pre-download YOLO26n weights
 # ============================================================================
-step "7" "Pre-download YOLO26n model weights"
+step "8" "Pre-download YOLO26n model weights"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from ultralytics import YOLO; YOLO(\"yolo26n.pt\")'"
@@ -341,9 +370,9 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 8/13 — Pre-download YOLOe-26n-seg weights
+# Step 9/14 — Pre-download YOLOe-26n-seg weights
 # ============================================================================
-step "8" "Pre-download YOLOe-26n-seg model weights"
+step "9" "Pre-download YOLOe-26n-seg model weights"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from ultralytics import YOLO; YOLO(\"yoloe-26n-seg.pt\")'"
@@ -364,9 +393,9 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 9/13 — Pre-download SAM3 (HuggingFace) — gated model, may fail
+# Step 10/14 — Pre-download SAM3 (HuggingFace) — gated model, may fail
 # ============================================================================
-step "9" "Pre-download SAM3 model from HuggingFace (gated — may require approval)"
+step "10" "Pre-download SAM3 model from HuggingFace (gated — may require approval)"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForMaskGeneration; ...'"
@@ -397,9 +426,9 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 10/13 — Pre-download Qwen3-VL (ungated SAM3 alternative)
+# Step 11/14 — Pre-download Qwen3-VL (ungated SAM3 alternative)
 # ============================================================================
-step "10" "Pre-download Qwen3-VL-8B-Instruct (ungated, no approval needed)"
+step "11" "Pre-download Qwen3-VL-8B-Instruct (ungated, no approval needed)"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForImageTextToText; ...'"
@@ -424,9 +453,9 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 11/13 — Install Node.js + Claude Code
+# Step 12/14 — Install Node.js + Claude Code
 # ============================================================================
-step "11" "Install Node.js and Claude Code (optional)"
+step "12" "Install Node.js and Claude Code (optional)"
 
 CLAUDE_CODE_OK=false
 
@@ -470,9 +499,9 @@ else
 fi
 
 # ============================================================================
-# Step 12/13 — Copy CV engineer skill
+# Step 13/14 — Copy CV engineer skill
 # ============================================================================
-step "12" "Copy CV engineer skill to user config"
+step "13" "Copy CV engineer skill to user config"
 
 SKILL_SRC="${WORKSHOP_DIR}/.claude/skills/cv-engineer/SKILL.md"
 SKILL_DST="${HOME}/.claude/skills/cv-engineer/SKILL.md"
@@ -495,9 +524,9 @@ else
 fi
 
 # ============================================================================
-# Step 13/13 — Smoke test
+# Step 14/14 — Smoke test
 # ============================================================================
-step "13" "Smoke test — verify installation"
+step "14" "Smoke test — verify installation"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c '<smoke test snippet>'"

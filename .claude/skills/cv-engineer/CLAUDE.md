@@ -72,6 +72,12 @@ uv run python data/evaluate_yoloe_26n.py
 uv run python data/auto_label_sam3_hf.py --mode exp_a --output-dir data/ppe_dataset_exp_a
 ```
 
+**If SAM3 is unavailable** (gated model, needs HuggingFace approval): use `auto_label_qwen3_vl.py` instead. Qwen3-VL is ungated and produces comparable labels via VLM grounding.
+
+```bash
+uv run python data/auto_label_qwen3_vl.py --mode exp_a --output-dir data/ppe_dataset_qwen3vl
+```
+
 **Alternative tool:** `auto_label_ppe_2class.py` (uses Grounding DINO instead of SAM3).
 
 ```bash
@@ -222,6 +228,22 @@ Usage: uv run python data/auto_label_ppe_2class.py [args]
   --threshold   (float, default: 0.25)                 — Confidence threshold
   --device      (cuda|mps|cpu, auto-detected)          — Inference device
 ```
+
+**`auto_label_qwen3_vl.py`** — Auto-label images using Qwen3-VL VLM grounding (ungated, SAM3 alternative)
+```
+Usage: uv run python data/auto_label_qwen3_vl.py [args]
+  --mode           (exp_a|3class, default: exp_a)       — Labeling mode. RECOMMEND exp_a (2-class)
+  --source-dir     (Path, default: data/synthetic_ppe)  — Root directory with source images
+  --output-dir     (Path, default: data/ppe_dataset_qwen3vl) — Output dataset directory
+  --model-id       (str, default: Qwen/Qwen3-VL-8B-Instruct) — HF model ID (use 4B for less VRAM)
+  --split-ratio    (float, default: 0.8)                — Train fraction (rest is val)
+  --seed           (int, default: 42)                   — Random seed for train/val split
+  --device         (cuda|mps|cpu, auto-detected)        — Inference device
+  --max-new-tokens (int, default: 1024)                 — Max VLM generation tokens per image
+```
+> **When to use**: If SAM3 access is not approved (gated model), use Qwen3-VL instead. It is ungated,
+> requires no HuggingFace approval, and produces byte-compatible YOLO-format output.
+> The 8B model needs ~16GB VRAM (A40 has 48GB). For less VRAM, use `--model-id Qwen/Qwen3-VL-4B-Instruct`.
 
 ### Data Curation
 

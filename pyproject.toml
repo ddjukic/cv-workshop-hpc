@@ -1,0 +1,45 @@
+[project]
+name = "cv-workshop-hpc"
+version = "1.0.0"
+description = "AI Factory CV Workshop — PPE Compliance Detection (March 3-4, 2026)"
+requires-python = ">=3.10,<3.11"
+
+dependencies = [
+    # Core ML
+    "torch==2.4.1",
+    "torchvision==0.19.1",
+    "ultralytics>=8.4.19",
+    "transformers>=4.40",
+    "accelerate",
+
+    # Experiment tracking & analysis
+    "fiftyone",
+    "mlflow",
+
+    # Jupyter
+    "ipykernel",
+    "ipywidgets",
+
+    # Data & visualization
+    "matplotlib",
+    "pandas",
+    "numpy",
+    "Pillow",
+    "opencv-python-headless",
+
+    # Utilities
+    "pyyaml",
+    "tqdm",
+    "packaging",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "pytest",
+]
+
+[tool.uv]
+# PyTorch CUDA 12.1 wheels — required for HPC (A40 GPU, CUDA 12.3 driver)
+# Compatible: cu121 wheels work with CUDA 12.3 driver (forward-compatible)
+extra-index-url = ["https://download.pytorch.org/whl/cu121"]

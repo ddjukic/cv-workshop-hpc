@@ -334,7 +334,7 @@ def check_workshop_files() -> list[bool]:
         notebooks = list(nb_dir.glob("*.ipynb"))
         results.append(check(
             "Exercise notebooks",
-            len(notebooks) >= 3,
+            len(notebooks) >= 4,
             f"{len(notebooks)} notebooks found"
         ))
     else:

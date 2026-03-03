@@ -133,6 +133,16 @@ bash check_setup.sh --quick
 > Verify my workshop setup — run check_environment.py and tell me if anything failed
 ```
 
+### Step 4: Test in JupyterHub
+
+Open JupyterHub, select **"CV Workshop (Python 3.10, CUDA)"** kernel, and run:
+
+```
+notebooks/00_test_environment.ipynb
+```
+
+This notebook verifies the full stack inside JupyterHub: kernel → torch → CUDA → YOLO models → Qwen3-VL loading → inference test. All cells should complete with green checkmarks.
+
 The health check verifies:
 - Python environment and virtual env activation
 - Core packages (torch, ultralytics, transformers) with version checks
@@ -166,7 +176,8 @@ The health check verifies:
 
 | Notebook | Description |
 |----------|-------------|
-| `01_ppe_getting_started.ipynb` | Environment check, dataset exploration, YOLOE baseline, auto-labeling |
+| `00_test_environment.ipynb` | **Run first** — verifies kernel, torch, CUDA, YOLO, Qwen3-VL, SAM3 |
+| `01_ppe_getting_started.ipynb` | Dataset exploration, YOLOE baseline, auto-labeling |
 | `02_inspect_iterate_train.ipynb` | Label visualization, error analysis, filtering, YOLO26n training |
 | `03_evaluate_and_deploy.ipynb` | Compliance post-processing, speed benchmark, model comparison |
 | `reference/` | Original step-by-step tutorials (for self-study) |

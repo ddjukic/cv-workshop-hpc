@@ -177,9 +177,16 @@ step "3" "Configure UV_CACHE_DIR (avoid filling home quota)"
 if [[ -n "${SCRATCH:-}" ]] && [[ -d "${SCRATCH}" ]]; then
     export UV_CACHE_DIR="${SCRATCH}/uv_cache"
     info "Using \$SCRATCH: UV_CACHE_DIR=${UV_CACHE_DIR}"
+elif [[ -n "${HF_HOME:-}" ]] && [[ -d "$(dirname "${HF_HOME}")" ]]; then
+    # HF_HOME (e.g. /gpfs/data/fs70824/trainee88/hf-cache) is on GPFS — same
+    # filesystem as $HOME.  Placing the uv cache next to it lets uv hardlink
+    # wheels into .venv instead of copying thousands of files over the network.
+    export UV_CACHE_DIR="$(dirname "${HF_HOME}")/uv_cache"
+    info "Using GPFS (next to HF_HOME): UV_CACHE_DIR=${UV_CACHE_DIR}"
 else
     export UV_CACHE_DIR="/tmp/${USER}/uv_cache"
-    warn "\$SCRATCH not set or missing — falling back to UV_CACHE_DIR=${UV_CACHE_DIR}"
+    warn "\$SCRATCH not set and HF_HOME not on GPFS — falling back to UV_CACHE_DIR=${UV_CACHE_DIR}"
+    warn "This may be slow (cross-filesystem copy). Set \$SCRATCH to a GPFS path if possible."
 fi
 
 run mkdir -p "${UV_CACHE_DIR}"
@@ -189,7 +196,9 @@ record "ok"
 # Tell uv to always resolve PyTorch from the CUDA 12.1 index.
 # Without this, transitive torch dependencies (from ultralytics, transformers)
 # get resolved from PyPI, overwriting the CUDA wheels with a broken CPU build.
+export UV_LINK_MODE=copy
 export UV_TORCH_BACKEND=cu121
+info "UV_LINK_MODE=copy (avoids hardlink fallback overhead)"
 info "UV_TORCH_BACKEND=cu121 (ensures CUDA wheels for PyTorch)"
 
 # ============================================================================

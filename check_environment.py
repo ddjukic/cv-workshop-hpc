@@ -14,7 +14,6 @@ Exit codes:
 import importlib
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -199,9 +198,11 @@ def check_model_weights() -> list[bool]:
             results.append(check(model_name, False, f"download needed: {e}"))
 
     # SAM3 HuggingFace model (gated — may not be available)
+    # NOTE: Must use Sam3Processor directly — AutoProcessor resolves to
+    # Sam3VideoProcessor in transformers>=5.x which lacks text= support.
     try:
-        from transformers import AutoProcessor
-        processor = AutoProcessor.from_pretrained("facebook/sam3", local_files_only=True)
+        from transformers import Sam3Processor
+        processor = Sam3Processor.from_pretrained("facebook/sam3", local_files_only=True)
         results.append(check("SAM3 (facebook/sam3)", True, "cached"))
         del processor
     except Exception:
@@ -254,45 +255,8 @@ def check_jupyter_kernel() -> list[bool]:
     return results
 
 
-def check_claude_code() -> list[bool]:
-    section("6. Claude Code + CV Engineer Skill")
-    results = []
-
-    # Check Claude Code binary
-    try:
-        result = subprocess.run(
-            ["claude", "--version"],
-            capture_output=True, text=True, timeout=10
-        )
-        if result.returncode == 0:
-            version = result.stdout.strip()
-            results.append(check("Claude Code installed", True, version))
-        else:
-            results.append(check("Claude Code installed", False, "binary found but --version failed"))
-    except FileNotFoundError:
-        results.append(check("Claude Code installed", False, "not in PATH"))
-    except Exception as e:
-        results.append(check("Claude Code installed", False, str(e)))
-
-    # Check CV engineer skill
-    skill_locations = [
-        WORKSHOP_DIR / ".claude" / "skills" / "cv-engineer" / "SKILL.md",
-        Path.home() / ".claude" / "skills" / "cv-engineer" / "SKILL.md",
-    ]
-    found = False
-    for loc in skill_locations:
-        if loc.exists():
-            results.append(check("CV Engineer skill", True, str(loc)))
-            found = True
-            break
-    if not found:
-        results.append(check("CV Engineer skill", False, "not found — run setup script"))
-
-    return results
-
-
 def check_workshop_files() -> list[bool]:
-    section("7. Workshop Files")
+    section("6. Workshop Files")
     results = []
 
     # Check data directory
@@ -365,7 +329,6 @@ def main():
         section("4. Model Weights (skipped — use full check without --quick)")
 
     all_results.extend(check_jupyter_kernel())
-    all_results.extend(check_claude_code())
     all_results.extend(check_workshop_files())
 
     # Summary

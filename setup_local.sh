@@ -72,7 +72,7 @@ uv pip install \
     "torch>=2.4" \
     "torchvision>=0.19" \
     "ultralytics>=8.4" \
-    "transformers>=4.50" \
+    "transformers>=5.0" \
     "supervision>=0.25" \
     "matplotlib>=3.8" \
     "Pillow>=10.0" \
@@ -87,6 +87,15 @@ uv pip install \
     "tqdm"
 
 ok "All packages installed"
+
+# --- CLIP for Ultralytics SAM3 text prompts ---
+info "Installing CLIP for SAM3 text prompts..."
+uv pip install \
+    --no-config \
+    --python "$VENV_PYTHON" \
+    "clip @ git+https://github.com/ultralytics/CLIP.git"
+
+ok "CLIP installed (required for SAM3 text prompts via Ultralytics)"
 
 # ---------------------------------------------------------------------------
 # Step 4: Verify
@@ -107,6 +116,9 @@ print(f'  Ultralytics:  {ultralytics.__version__}')
 
 import supervision
 print(f'  Supervision:  {supervision.__version__}')
+
+import clip
+print(f'  CLIP:         installed (for SAM3 text prompts)')
 "
 
 ok "All imports verified"
@@ -127,8 +139,10 @@ ok "Kernel 'cv-workshop-local' registered"
 info "Pre-downloading model weights (this may take a few minutes)..."
 
 # SAM3
+# NOTE: Must use Sam3Processor directly — AutoProcessor resolves to
+# Sam3VideoProcessor in transformers>=5.x which lacks text= support.
 "$VENV_PYTHON" -c "
-from transformers import Sam3Model, Sam3Processor
+from transformers import Sam3Processor, Sam3Model
 import os
 token = os.getenv('HF_TOKEN', None)
 print('  Downloading SAM3 processor...')
@@ -143,9 +157,9 @@ print('  SAM3 cached.')
 
 # YOLOE
 "$VENV_PYTHON" -c "
-from ultralytics import YOLOE
-print('  Downloading yoloe-26l-seg.pt...')
-YOLOE('yoloe-26l-seg.pt')
+from ultralytics import YOLO
+print('  Downloading yoloe-26n-seg.pt...')
+YOLO('yoloe-26n-seg.pt')
 print('  YOLOE cached.')
 " 2>&1 || {
     fail "YOLOE download failed"

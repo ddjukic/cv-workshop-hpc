@@ -6,7 +6,7 @@
 #   bash check_setup.sh          # Full check
 #   bash check_setup.sh --quick  # Skip model weight download verification
 #
-# Or ask Claude Code: "verify my workshop setup"
+# Or ask your CV copilot: "verify my workshop setup"
 
 set -euo pipefail
 

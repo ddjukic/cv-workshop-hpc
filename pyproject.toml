@@ -31,6 +31,9 @@ dependencies = [
     "Pillow",
     "opencv-python-headless",
 
+    # SAM3 text prompts (Ultralytics)
+    "clip @ git+https://github.com/ultralytics/CLIP.git",
+
     # Utilities
     "pyyaml",
     "tqdm",

@@ -16,6 +16,7 @@ Usage:
     python auto_label_qwen3_vl.py --mode 3class
     python auto_label_qwen3_vl.py --model-id Qwen/Qwen3-VL-4B-Instruct
     python auto_label_qwen3_vl.py --source-dir data/synthetic_ppe --output-dir data/ppe_dataset
+    python auto_label_qwen3_vl.py --target "helmet, person"
 
 Output structure:
     <output-dir>/
@@ -387,7 +388,7 @@ def label_dataset(args: argparse.Namespace) -> None:
 
     Args:
         args: Namespace with source_dir, output_dir, model_id, mode,
-              split_ratio, seed, device, max_new_tokens.
+              split_ratio, seed, device, max_new_tokens, target.
     """
     # ---- Deferred heavy imports ----
     try:
@@ -414,6 +415,14 @@ def label_dataset(args: argparse.Namespace) -> None:
         print(f"ERROR: Unknown mode '{mode}'. Choose from: {list(MODE_CONFIG.keys())}")
         sys.exit(1)
     mode_cfg = MODE_CONFIG[mode]
+
+    # --target override: replace the mode's default detection prompt
+    if args.target is not None:
+        target_str = args.target.strip()
+        mode_cfg["target"] = target_str
+        mode_cfg["parse_classes"] = [t.strip() for t in target_str.split(",")]
+        print(f"Target override: \"{target_str}\" -> parse_classes={mode_cfg['parse_classes']}")
+
     class_names = mode_cfg["class_names"]
 
     label_fn = label_image_exp_a if mode == "exp_a" else label_image_3class
@@ -636,6 +645,16 @@ def _parse_args() -> argparse.Namespace:
         type=int,
         default=1024,
         help="Maximum tokens for VLM generation per image.",
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        help=(
+            "Override the detection prompt target string. "
+            "Comma-separated object names, e.g. 'helmet, person' or "
+            "'hard hat, safety vest, person'. If omitted, uses the mode default."
+        ),
     )
     return parser.parse_args()
 

@@ -5,9 +5,8 @@
 # Target: VSC-5 (A40 GPU, CUDA 12.3, conda Python 3.10.14, JupyterHub)
 #
 # This script creates a fully isolated Python environment using uv, installs
-# PyTorch + workshop dependencies, registers a Jupyter kernel, pre-downloads
-# model weights (must run on a login node with internet), and optionally
-# installs Claude Code via npm.
+# PyTorch + workshop dependencies, registers a Jupyter kernel, and pre-downloads
+# model weights (must run on a login node with internet).
 #
 # Usage:
 #   chmod +x setup_workshop_env.sh
@@ -36,7 +35,7 @@ NC='\033[0m' # No Color
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DRY_RUN=false
-TOTAL_STEPS=14
+TOTAL_STEPS=12
 STEP_RESULTS=()   # Tracks "ok" / "skip" / "warn" / "fail" per step
 START_TIME="$(date +%s)"
 
@@ -114,7 +113,7 @@ echo ""
 WORKSHOP_DIR="${WORKSHOP_DIR:-${SCRIPT_DIR}}"
 
 # ============================================================================
-# Step 1/14 — Install uv
+# Step 1/12 — Install uv
 # ============================================================================
 step "1" "Install uv (fast Python package manager)"
 
@@ -142,7 +141,7 @@ fi
 export PATH="${HOME}/.local/bin:${PATH}"
 
 # ============================================================================
-# Step 2/14 — Install HuggingFace CLI (standalone, not pip)
+# Step 2/12 — Install HuggingFace CLI (standalone, not pip)
 # ============================================================================
 step "2" "Install HuggingFace CLI (standalone installer)"
 
@@ -171,7 +170,7 @@ fi
 info "After setup, log in with: huggingface-cli login"
 
 # ============================================================================
-# Step 3/14 — Configure UV_CACHE_DIR
+# Step 3/12 — Configure UV_CACHE_DIR
 # ============================================================================
 step "3" "Configure UV_CACHE_DIR (avoid filling home quota)"
 
@@ -194,7 +193,7 @@ export UV_TORCH_BACKEND=cu121
 info "UV_TORCH_BACKEND=cu121 (ensures CUDA wheels for PyTorch)"
 
 # ============================================================================
-# Step 4/14 — Create virtual environment
+# Step 4/12 — Create virtual environment
 # ============================================================================
 step "4" "Create Python 3.10 virtual environment (.venv)"
 
@@ -223,7 +222,7 @@ fi
 VENV_PYTHON="${VENV_DIR}/bin/python"
 
 # ============================================================================
-# Step 5/14 — Install PyTorch + all workshop dependencies (single resolution)
+# Step 5/12 — Install PyTorch + all workshop dependencies (single resolution)
 # ============================================================================
 step "5" "Install PyTorch 2.4.1 (CUDA 12.1) + workshop dependencies"
 
@@ -253,6 +252,7 @@ ALL_DEPS=(
     "pyyaml"
     "tqdm"
     "packaging"
+    "clip @ git+https://github.com/ultralytics/CLIP.git"
 )
 
 info "Installing PyTorch + ${#ALL_DEPS[@]} packages (this may take several minutes)..."
@@ -292,7 +292,7 @@ else
 fi
 
 # ============================================================================
-# Step 6/14 — Verify torch integration with ultralytics and transformers
+# Step 6/12 — Verify torch integration with ultralytics and transformers
 # ============================================================================
 step "6" "Verify torch + ultralytics + transformers integration"
 
@@ -311,6 +311,9 @@ print(f'ultralytics {ultralytics.__version__} OK')
 
 import transformers
 print(f'transformers {transformers.__version__} OK')
+
+import clip
+print(f'clip (for SAM3 text prompts) OK')
 " 2>&1; then
         ok "Core packages verified"
         record "ok"
@@ -322,7 +325,7 @@ print(f'transformers {transformers.__version__} OK')
 fi
 
 # ============================================================================
-# Step 7/14 — Register Jupyter kernel
+# Step 7/12 — Register Jupyter kernel
 # ============================================================================
 step "7" "Register IPython kernel for JupyterHub"
 
@@ -347,7 +350,7 @@ else
 fi
 
 # ============================================================================
-# Step 8/14 — Pre-download YOLO26n weights
+# Step 8/12 — Pre-download YOLO26n weights
 # ============================================================================
 step "8" "Pre-download YOLO26n model weights"
 
@@ -370,7 +373,7 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 9/14 — Pre-download YOLOe-26n-seg weights
+# Step 9/12 — Pre-download YOLOe-26n-seg weights
 # ============================================================================
 step "9" "Pre-download YOLOe-26n-seg model weights"
 
@@ -393,48 +396,73 @@ print('Done.')
 fi
 
 # ============================================================================
-# Step 10/14 — Pre-download SAM3 (HuggingFace) — gated model, may fail
+# Step 10/12 — Pre-download SAM3 (HuggingFace) — gated model, may fail
 # ============================================================================
 step "10" "Pre-download SAM3 model from HuggingFace (gated — may require approval)"
 
 if $DRY_RUN; then
-    echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForMaskGeneration; ...'"
+    echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import Sam3Processor, Sam3Model; ...'"
     record "ok"
 else
-    info "SAM3 is a GATED model — you may need to:"
+    info "SAM3 is a GATED model. Before this step can succeed you need:"
     info "  1. Create a HuggingFace account at https://huggingface.co"
     info "  2. Request access at https://huggingface.co/facebook/sam3"
-    info "  3. Set HF_TOKEN: export HF_TOKEN=your_token_here"
-    info "If SAM3 fails, Qwen3-VL (Step 10) is the ungated alternative."
+    info "  3. Set your token: export HF_TOKEN=hf_... OR run huggingface-cli login"
     echo ""
-    info "Attempting SAM3 download..."
-    if "${VENV_PYTHON}" -c "
-from transformers import AutoProcessor, AutoModelForMaskGeneration
+
+    # Pre-check: is HF_TOKEN set or huggingface-cli logged in?
+    HF_AUTH_OK=false
+    if [[ -n "${HF_TOKEN:-}" ]]; then
+        info "HF_TOKEN is set — will use it for authentication."
+        HF_AUTH_OK=true
+    elif command -v huggingface-cli &>/dev/null && huggingface-cli whoami &>/dev/null 2>&1; then
+        info "huggingface-cli is logged in."
+        HF_AUTH_OK=true
+    elif [[ -f "${HOME}/.cache/huggingface/token" ]]; then
+        info "Found cached HuggingFace token."
+        HF_AUTH_OK=true
+    else
+        warn "No HF_TOKEN set and huggingface-cli not logged in."
+        warn "SAM3 download will almost certainly fail."
+        warn "To fix: export HF_TOKEN=hf_... or run: huggingface-cli login"
+    fi
+
+    if ! $HF_AUTH_OK; then
+        info "Skipping SAM3 download (no HuggingFace credentials found)."
+        info "Qwen 3.5 (Step 11) is the ungated alternative — no approval needed."
+        record "warn"
+    else
+        info "Attempting SAM3 download..."
+        # NOTE: Must use Sam3Processor directly — AutoProcessor resolves to
+        # Sam3VideoProcessor in transformers>=5.x which lacks text= support.
+        if "${VENV_PYTHON}" -c "
+from transformers import Sam3Processor, Sam3Model
 print('Downloading SAM3 processor...')
-AutoProcessor.from_pretrained('facebook/sam3')
+Sam3Processor.from_pretrained('facebook/sam3')
 print('Downloading SAM3 model...')
-AutoModelForMaskGeneration.from_pretrained('facebook/sam3')
+Sam3Model.from_pretrained('facebook/sam3')
 print('Done.')
 " 2>&1; then
-        ok "SAM3 model and processor downloaded"
-        record "ok"
-    else
-        warn "SAM3 download failed — this is expected if you don't have HF access"
-        warn "Use Qwen3-VL (Step 10) as the auto-labeling alternative"
-        record "warn"
+            ok "SAM3 model and processor downloaded"
+            record "ok"
+        else
+            warn "SAM3 download failed — this is expected if you don't have HF access"
+            warn "Use Qwen 3.5 (Step 11) as the auto-labeling alternative"
+            record "warn"
+        fi
     fi
 fi
 
 # ============================================================================
-# Step 11/14 — Pre-download Qwen3-VL (ungated SAM3 alternative)
+# Step 11/12 — Pre-download Qwen 3.5 VL (ungated SAM3 alternative)
 # ============================================================================
-step "11" "Pre-download Qwen3-VL-8B-Instruct (ungated, no approval needed)"
+step "11" "Pre-download Qwen 3.5 VL 8B Instruct (ungated, no approval needed)"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c 'from transformers import AutoProcessor, AutoModelForImageTextToText; ...'"
     record "ok"
 else
-    info "Downloading Qwen3-VL-8B (~16 GB). This may take several minutes..."
+    info "Downloading Qwen 3.5 VL 8B (~16 GB). This may take several minutes..."
     if "${VENV_PYTHON}" -c "
 from transformers import AutoProcessor, AutoModelForImageTextToText
 model_id = 'Qwen/Qwen3-VL-8B-Instruct'
@@ -444,89 +472,18 @@ print(f'Downloading {model_id} model...')
 AutoModelForImageTextToText.from_pretrained(model_id)
 print('Done.')
 " 2>&1; then
-        ok "Qwen3-VL-8B-Instruct downloaded"
+        ok "Qwen 3.5 VL 8B Instruct downloaded"
         record "ok"
     else
-        warn "Qwen3-VL download failed (will retry on first use)"
+        warn "Qwen 3.5 download failed (will retry on first use)"
         record "warn"
     fi
 fi
 
 # ============================================================================
-# Step 12/14 — Install Node.js + Claude Code
+# Step 12/12 — Smoke test
 # ============================================================================
-step "12" "Install Node.js and Claude Code (optional)"
-
-CLAUDE_CODE_OK=false
-
-# Check for Node.js
-if command -v node &>/dev/null; then
-    NODE_VER="$(node --version 2>/dev/null || echo 'unknown')"
-    ok "Node.js already installed: ${NODE_VER}"
-else
-    info "Installing Node.js 18 via conda..."
-    if run conda install -y -c conda-forge "nodejs=18"; then
-        ok "Node.js installed"
-    else
-        warn "Node.js installation failed — skipping Claude Code"
-        record "warn"
-    fi
-fi
-
-if command -v node &>/dev/null || $DRY_RUN; then
-    # Set npm prefix to avoid needing root
-    run npm config set prefix "${HOME}/.local"
-
-    # Check if Claude Code is already installed
-    if command -v claude &>/dev/null; then
-        ok "Claude Code already installed: $(claude --version 2>/dev/null || echo 'installed')"
-        CLAUDE_CODE_OK=true
-    else
-        info "Installing Claude Code via npm..."
-        if run npm install -g @anthropic-ai/claude-code; then
-            ok "Claude Code installed"
-            CLAUDE_CODE_OK=true
-        else
-            warn "Claude Code installation failed (non-critical, continuing)"
-        fi
-    fi
-fi
-
-if $CLAUDE_CODE_OK || $DRY_RUN; then
-    record "ok"
-else
-    record "warn"
-fi
-
-# ============================================================================
-# Step 13/14 — Copy CV engineer skill
-# ============================================================================
-step "13" "Copy CV engineer skill to user config"
-
-SKILL_SRC="${WORKSHOP_DIR}/.claude/skills/cv-engineer/SKILL.md"
-SKILL_DST="${HOME}/.claude/skills/cv-engineer/SKILL.md"
-
-if [[ -f "${SKILL_DST}" ]]; then
-    ok "CV engineer skill already present at ${SKILL_DST}"
-    record "skip"
-elif [[ ! -f "${SKILL_SRC}" ]]; then
-    warn "Source skill file not found at ${SKILL_SRC} — skipping"
-    record "warn"
-else
-    run mkdir -p "${HOME}/.claude/skills/cv-engineer/"
-    if run cp "${SKILL_SRC}" "${SKILL_DST}"; then
-        ok "CV engineer skill copied"
-        record "ok"
-    else
-        warn "Failed to copy CV engineer skill"
-        record "warn"
-    fi
-fi
-
-# ============================================================================
-# Step 14/14 — Smoke test
-# ============================================================================
-step "14" "Smoke test — verify installation"
+step "12" "Smoke test — verify installation"
 
 if $DRY_RUN; then
     echo -e "  ${CYAN}[DRY-RUN]${NC} ${VENV_PYTHON} -c '<smoke test snippet>'"
@@ -599,6 +556,7 @@ echo ""
 
 STEP_NAMES=(
     "Install uv"
+    "Install HuggingFace CLI"
     "Configure UV_CACHE_DIR"
     "Create virtual environment"
     "Install PyTorch + workshop deps"
@@ -607,9 +565,7 @@ STEP_NAMES=(
     "Pre-download YOLO26n"
     "Pre-download YOLOe-26n-seg"
     "Pre-download SAM3 (gated)"
-    "Pre-download Qwen3-VL (ungated)"
-    "Install Node.js + Claude Code"
-    "Copy CV engineer skill"
+    "Pre-download Qwen 3.5 (ungated)"
     "Smoke test"
 )
 
@@ -648,13 +604,11 @@ echo -e "${BOLD}Next steps:${NC}"
 echo ""
 echo "  1. Verify your setup:"
 echo "       bash check_setup.sh"
-echo "     Or ask Claude Code: 'verify my workshop setup'"
 echo ""
 echo "  2. In JupyterHub, select the 'CV Workshop (Python 3.10, CUDA)' kernel"
 echo "  3. If running outside JupyterHub, activate with:"
 echo "       export PATH=\"${VENV_DIR}/bin:\$PATH\""
-echo "  4. To use Claude Code:"
-echo "       claude auth login"
+echo "  4. For AI assistance, see notebooks/cv_copilot_prompt.md"
 echo ""
 echo -e "${BOLD}Workshop directory:${NC} ${WORKSHOP_DIR}"
 echo -e "${BOLD}Virtual environment:${NC} ${VENV_DIR}"

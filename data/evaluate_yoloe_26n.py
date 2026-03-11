@@ -266,23 +266,24 @@ def main() -> None:
     for d, label in [
         (eval_val_images_dir, "Eval val images"),
         (eval_val_labels_dir, "Eval val labels"),
-        (gt_val_images_dir, "GT val images"),
-        (gt_val_labels_dir, "GT val labels"),
     ]:
         if not d.is_dir():
             print(f"ERROR: {label} dir not found: {d}")
             sys.exit(1)
 
-    if not MODEL_PATH.exists():
-        print(f"ERROR: Model not found: {MODEL_PATH}")
-        sys.exit(1)
+    # 3-class GT dataset is optional (used for compliance evaluation only)
+    has_gt_dataset = gt_val_images_dir.is_dir() and gt_val_labels_dir.is_dir()
+    if not has_gt_dataset:
+        print(f"NOTE: 3-class GT dataset not found at {GT_DATASET}")
+        print("  Compliance evaluation will be skipped.")
 
-    # Load model
+    # Load model (Ultralytics will auto-download if not found locally)
     from ultralytics import YOLO
     from PIL import Image
 
-    print(f"Loading YOLOe-26n-seg from: {MODEL_PATH}")
-    model = YOLO(str(MODEL_PATH))
+    model_str = str(MODEL_PATH) if MODEL_PATH.exists() else "yoloe-26n-seg.pt"
+    print(f"Loading YOLOe-26n-seg from: {model_str}")
+    model = YOLO(model_str)
     model.set_classes(["hard hat", "person"])
 
     CONF = 0.25
@@ -295,12 +296,14 @@ def main() -> None:
     )
     print(f"Eval val images: {len(eval_image_files)}")
 
-    # Collect GT val images
-    gt_image_files = sorted(
-        p for p in gt_val_images_dir.iterdir()
-        if p.suffix.lower() in IMAGE_EXTENSIONS
-    )
-    print(f"GT val images: {len(gt_image_files)}")
+    # Collect GT val images (optional — only if 3-class GT dataset exists)
+    gt_image_files = []
+    if has_gt_dataset:
+        gt_image_files = sorted(
+            p for p in gt_val_images_dir.iterdir()
+            if p.suffix.lower() in IMAGE_EXTENSIONS
+        )
+        print(f"GT val images: {len(gt_image_files)}")
 
     # -----------------------------------------------------------------------
     # Part 1: Run inference on all eval val images & compute mAP
@@ -429,43 +432,42 @@ def main() -> None:
     print(f"  Avg inference: {avg_inference_ms:.1f} ms/img (CPU)")
 
     # -----------------------------------------------------------------------
-    # Part 2: Compliance evaluation on GT val images
+    # Part 2: Compliance evaluation on GT val images (optional)
     # -----------------------------------------------------------------------
-    print("\n--- Running compliance evaluation on GT val images ---")
+    total_compliance = None
+    if has_gt_dataset and gt_image_files:
+        print("\n--- Running compliance evaluation on GT val images ---")
 
-    total_compliance = {"gt_compliant": 0, "gt_non_compliant": 0,
-                        "correct_compliant": 0, "correct_non_compliant": 0,
-                        "false_alarm": 0, "missed_catch": 0}
+        total_compliance = {"gt_compliant": 0, "gt_non_compliant": 0,
+                            "correct_compliant": 0, "correct_non_compliant": 0,
+                            "false_alarm": 0, "missed_catch": 0}
 
-    # Also track detection metrics on GT images (using 2-class eval labels where they exist)
-    gt_img_total_metrics: dict[int, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
+        for img_path in gt_image_files:
+            stem = img_path.stem
+            gt_label_path = gt_val_labels_dir / f"{stem}.txt"
+            gt_labels_3class = parse_yolo_label(gt_label_path)
 
-    for img_path in gt_image_files:
-        stem = img_path.stem
-        gt_label_path = gt_val_labels_dir / f"{stem}.txt"
-        gt_labels_3class = parse_yolo_label(gt_label_path)
+            img = Image.open(img_path)
+            img_w, img_h = img.size
 
-        img = Image.open(img_path)
-        img_w, img_h = img.size
+            # Derive GT compliance from 3-class labels
+            gt_compliance = derive_gt_compliance(gt_labels_3class, img_w, img_h)
 
-        # Derive GT compliance from 3-class labels
-        gt_compliance = derive_gt_compliance(gt_labels_3class, img_w, img_h)
+            # Run inference
+            results = model.predict(str(img_path), conf=CONF, verbose=False, device="cpu")
 
-        # Run inference
-        results = model.predict(str(img_path), conf=CONF, verbose=False, device="cpu")
+            pred_boxes = []
+            if results and results[0].boxes is not None:
+                for box in results[0].boxes:
+                    cls_id = int(box.cls.item())
+                    conf_val = float(box.conf.item())
+                    xyxy = box.xyxy[0].tolist()
+                    pred_boxes.append({"cls": cls_id, "bbox": xyxy, "conf": conf_val})
 
-        pred_boxes = []
-        if results and results[0].boxes is not None:
-            for box in results[0].boxes:
-                cls_id = int(box.cls.item())
-                conf_val = float(box.conf.item())
-                xyxy = box.xyxy[0].tolist()
-                pred_boxes.append({"cls": cls_id, "bbox": xyxy, "conf": conf_val})
-
-        # Compliance evaluation
-        img_compliance = evaluate_compliance(pred_boxes, gt_compliance)
-        for k in total_compliance:
-            total_compliance[k] += img_compliance[k]
+            # Compliance evaluation
+            img_compliance = evaluate_compliance(pred_boxes, gt_compliance)
+            for k in total_compliance:
+                total_compliance[k] += img_compliance[k]
 
     # -----------------------------------------------------------------------
     # Format results
@@ -482,10 +484,11 @@ def main() -> None:
     line(f"  Model          : {MODEL_PATH}")
     line(f"  Prompts        : ['hard hat', 'person']")
     line(f"  Eval dataset   : {EVAL_DATASET}")
-    line(f"  GT dataset     : {GT_DATASET}")
+    line(f"  GT dataset     : {GT_DATASET}{'' if has_gt_dataset else ' (not found, compliance skipped)'}")
     line(f"  Conf threshold : {CONF}")
     line(f"  Eval val images: {len(eval_image_files)}")
-    line(f"  GT val images  : {len(gt_image_files)}")
+    if has_gt_dataset:
+        line(f"  GT val images  : {len(gt_image_files)}")
 
     # mAP metrics
     line()
@@ -520,43 +523,51 @@ def main() -> None:
             name = CLASS_NAMES.get(cls_id, f"class_{cls_id}")
             line(f"  {name:<15} {tp:>6} {fp:>6} {fn:>6} {precision:>10.4f} {recall:>10.4f} {f1:>10.4f}")
 
-    # Compliance metrics
-    line()
-    line("-" * W)
-    line("  Compliance Assessment (vs 3-class GT):")
-    line("-" * W)
-    total_persons = total_compliance["gt_compliant"] + total_compliance["gt_non_compliant"]
-    total_correct = total_compliance["correct_compliant"] + total_compliance["correct_non_compliant"]
-    accuracy = total_correct / total_persons if total_persons > 0 else 0.0
-    catch_rate = (total_compliance["correct_non_compliant"] / total_compliance["gt_non_compliant"]
-                  if total_compliance["gt_non_compliant"] > 0 else 0.0)
-    false_alarm_rate = (total_compliance["false_alarm"] / total_compliance["gt_non_compliant"]
-                        if total_compliance["gt_non_compliant"] > 0 else 0.0)
-    miss_rate = (total_compliance["missed_catch"] / total_compliance["gt_compliant"]
-                 if total_compliance["gt_compliant"] > 0 else 0.0)
+    # Compliance metrics (only if GT dataset was available)
+    accuracy = 0.0
+    if total_compliance is not None:
+        line()
+        line("-" * W)
+        line("  Compliance Assessment (vs 3-class GT):")
+        line("-" * W)
+        total_persons = total_compliance["gt_compliant"] + total_compliance["gt_non_compliant"]
+        total_correct = total_compliance["correct_compliant"] + total_compliance["correct_non_compliant"]
+        accuracy = total_correct / total_persons if total_persons > 0 else 0.0
+        catch_rate = (total_compliance["correct_non_compliant"] / total_compliance["gt_non_compliant"]
+                      if total_compliance["gt_non_compliant"] > 0 else 0.0)
+        false_alarm_rate = (total_compliance["false_alarm"] / total_compliance["gt_non_compliant"]
+                            if total_compliance["gt_non_compliant"] > 0 else 0.0)
+        miss_rate = (total_compliance["missed_catch"] / total_compliance["gt_compliant"]
+                     if total_compliance["gt_compliant"] > 0 else 0.0)
 
-    line(f"  GT compliant persons     : {total_compliance['gt_compliant']}")
-    line(f"  GT non-compliant persons : {total_compliance['gt_non_compliant']}")
-    line(f"  Total persons            : {total_persons}")
-    line()
-    line(f"  Correctly predicted compliant     : {total_compliance['correct_compliant']}")
-    line(f"  Correctly predicted non-compliant : {total_compliance['correct_non_compliant']}")
-    line(f"  False alarms (predicted safe, actually unsafe): {total_compliance['false_alarm']}")
-    line(f"  Missed catches (predicted unsafe, actually safe): {total_compliance['missed_catch']}")
-    line()
-    line(f"  Overall accuracy  : {accuracy:.4f} ({accuracy*100:.1f}%)")
-    line(f"  Catch rate        : {catch_rate:.4f} ({catch_rate*100:.1f}%)")
-    line(f"  False alarm rate  : {false_alarm_rate:.4f} ({false_alarm_rate*100:.1f}%)")
-    line(f"  Miss rate         : {miss_rate:.4f} ({miss_rate*100:.1f}%)")
+        line(f"  GT compliant persons     : {total_compliance['gt_compliant']}")
+        line(f"  GT non-compliant persons : {total_compliance['gt_non_compliant']}")
+        line(f"  Total persons            : {total_persons}")
+        line()
+        line(f"  Correctly predicted compliant     : {total_compliance['correct_compliant']}")
+        line(f"  Correctly predicted non-compliant : {total_compliance['correct_non_compliant']}")
+        line(f"  False alarms (predicted safe, actually unsafe): {total_compliance['false_alarm']}")
+        line(f"  Missed catches (predicted unsafe, actually safe): {total_compliance['missed_catch']}")
+        line()
+        line(f"  Overall accuracy  : {accuracy:.4f} ({accuracy*100:.1f}%)")
+        line(f"  Catch rate        : {catch_rate:.4f} ({catch_rate*100:.1f}%)")
+        line(f"  False alarm rate  : {false_alarm_rate:.4f} ({false_alarm_rate*100:.1f}%)")
+        line(f"  Miss rate         : {miss_rate:.4f} ({miss_rate*100:.1f}%)")
+    else:
+        line()
+        line("-" * W)
+        line("  Compliance Assessment: SKIPPED (3-class GT dataset not found)")
+        line("-" * W)
 
     # Comparison summary
     line()
     line("-" * W)
     line("  Comparison with fine-tuned models:")
     line("-" * W)
+    compliance_str = f"{accuracy*100:.1f}%" if total_compliance is not None else "N/A"
     line(f"  {'Model':<35} {'mAP50':>8} {'AP50 hat':>10} {'AP50 person':>12} {'Compliance':>12}")
     line(f"  {'-'*35} {'-'*8} {'-'*10} {'-'*12} {'-'*12}")
-    line(f"  {'YOLOe-26n-seg (zero-shot)':<35} {map50:>8.3f} {ap50_per_class.get(0, 0.0):>10.3f} {ap50_per_class.get(1, 0.0):>12.3f} {accuracy*100:>11.1f}%")
+    line(f"  {'YOLOe-26n-seg (zero-shot)':<35} {map50:>8.3f} {ap50_per_class.get(0, 0.0):>10.3f} {ap50_per_class.get(1, 0.0):>12.3f} {compliance_str:>12}")
     line(f"  {'YOLO26n@640 (Exp A, fine-tuned)':<35} {'0.689':>8} {'0.522':>10} {'0.855':>12} {'85.4%':>12}")
     line(f"  {'YOLO26n@1280 (Exp C, fine-tuned)':<35} {'0.772':>8} {'0.624':>10} {'0.920':>12} {'85.4%':>12}")
 

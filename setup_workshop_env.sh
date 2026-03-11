@@ -255,7 +255,7 @@ ALL_DEPS=(
     "ipywidgets"
     "matplotlib"
     "pandas"
-    "numpy"
+    "numpy<2"
     "Pillow"
     "opencv-python-headless"
     "pyyaml"

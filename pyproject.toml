@@ -27,7 +27,7 @@ dependencies = [
     # Data & visualization
     "matplotlib",
     "pandas",
-    "numpy",
+    "numpy<2",
     "Pillow",
     "opencv-python-headless",
 

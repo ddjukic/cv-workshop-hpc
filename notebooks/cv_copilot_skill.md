@@ -188,6 +188,17 @@ uv run python data/benchmark_inference_speed.py \
 2. Check if any detected hardhat overlaps the head region with IoU >= 0.1.
 3. If yes: COMPLIANT. If no: NON-COMPLIANT.
 
+**Real-world refinement — distance filtering:**
+In production, workers far from the camera appear as tiny bounding boxes where helmet visibility is unreliable. Add a minimum person-height threshold (e.g., 100px at 640 input resolution) to only assess compliance for clearly visible workers. This is a pragmatic engineering decision: guarantee reliable results for a defined operating envelope rather than unreliable results for everyone.
+
+**Advanced (post-training):** Use FiftyOne for data-centric analysis of model predictions:
+- **Mistakenness**: identifies samples where predictions disagree with labels (likely label errors or hard cases)
+- **Uniqueness**: finds near-duplicate or outlier images
+- **TP/FP/FN distribution**: understand where the model fails across scene categories
+- **UMAP embeddings**: visualize cluster structure of your dataset
+
+See Notebook 04 (Solution Walkthrough) for the full FiftyOne workflow.
+
 ---
 
 ## Tools Inventory
@@ -278,7 +289,11 @@ Share these **progressively** as participants reach each phase. Do not dump them
 The relationship between data quantity and mAP50 follows a saturating exponential curve (R^2 = 0.97). With the original (poor) labels, the asymptote is mAP50 ~0.527. Switching to improved labels broke through to 0.633.
 
 ### Insight 2 -- Prompt engineering matters for auto-labeling
-The minimal prompt `"helmet. person."` finds 2.2x more helmets than `"hard hat. safety helmet. person."`. Let participants discover this on their own.
+SAM3 HF takes one concept per call — the labeling script runs separate calls for each concept. The broad single-concept prompt `"helmet"` finds 2.2x more helmets than verbose alternatives like `"safety helmet"` or `"hard hat"`. This mirrors LLM prompt sensitivity: simpler, more direct prompts often outperform verbose ones.
+
+**Bonus discovery:** The negative prompt `"person not wearing a hard hat"` fails entirely — CLIP embeddings cannot represent absence. This is the visual equivalent of LLMs struggling with negation.
+
+Let participants discover this on their own.
 
 ### Insight 3 -- 2-class beats 3-class
 The `no_hardhat` class achieves only 25.5% recall. The 2-class approach (hardhat + person with spatial post-processing) is fundamentally better.
@@ -300,6 +315,7 @@ SAM3 labels produce mAP50 0.593, detecting nearly 2x more objects per image than
 5. **Connect to business metrics.** mAP50 is a model metric; compliance accuracy is the business metric.
 6. **Celebrate the saturating curve insight.** This is the key aha moment.
 7. **Use pre-baked results as fallback.** Point to `data/ppe_results/` if training takes too long.
+8. **Frame the golden rule.** "Detect THINGS with models, check RELATIONSHIPS with code." Models find objects (hardhats, persons). Logic about how objects relate ("is this person wearing that helmet?") belongs in post-processing code. This is the central architectural insight of the workshop.
 
 ---
 

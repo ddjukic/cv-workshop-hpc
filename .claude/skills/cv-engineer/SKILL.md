@@ -72,7 +72,7 @@ uv run python data/evaluate_yoloe_26n.py
 uv run python data/auto_label_sam3_hf.py --mode exp_a --output-dir data/ppe_dataset_exp_a
 ```
 
-**If SAM3 is unavailable** (gated model, needs HuggingFace approval): use `auto_label_qwen3_vl.py` instead. Qwen3-VL is ungated and produces comparable labels via VLM grounding.
+**If SAM3 is unavailable** (gated model, needs HuggingFace approval): use `auto_label_qwen3_vl.py` instead. Qwen 3.5 is ungated and produces comparable labels via VLM grounding.
 
 ```bash
 uv run python data/auto_label_qwen3_vl.py --mode exp_a --output-dir data/ppe_dataset_qwen3vl
@@ -190,6 +190,18 @@ uv run python data/benchmark_inference_speed.py \
 2. Check if any detected hardhat overlaps the head region with IoU >= 0.1.
 3. If yes: COMPLIANT. If no: NON-COMPLIANT.
 
+**Real-world refinement — distance filtering:**
+Workers far from camera appear as tiny bounding boxes where helmet visibility is unreliable. Add a minimum person-height threshold (e.g., 100px at 640 input) to only assess compliance for clearly visible workers. Guarantee reliable results within a defined operating envelope.
+
+**Data-centric analysis with FiftyOne (advanced):**
+After training, use FiftyOne for deeper model analysis:
+- `mistakenness` brain method: identifies samples where predictions disagree with labels
+- `uniqueness` brain method: finds near-duplicate or outlier images
+- TP/FP/FN error distribution across scene categories
+- UMAP embedding visualization for cluster structure
+
+See Notebook 04 (Solution Walkthrough) for the complete FiftyOne workflow.
+
 **Closing discussion questions:**
 - "What would you change to improve the system? More data? Better prompts? Different architecture?"
 - "How would you deploy this? What is the failure mode you are most worried about?"
@@ -214,7 +226,7 @@ Usage: uv run python data/auto_label_sam3_hf.py [args]
   --device         (cuda|mps|cpu, auto-detected)          — Inference device
 ```
 
-**`auto_label_qwen3_vl.py`** — Auto-label images using Qwen3-VL VLM grounding (ungated, SAM3 alternative)
+**`auto_label_qwen3_vl.py`** — Auto-label images using Qwen 3.5 VLM grounding (ungated, SAM3 alternative)
 ```
 Usage: uv run python data/auto_label_qwen3_vl.py [args]
   --mode           (exp_a|3class, default: exp_a)       — Labeling mode. RECOMMEND exp_a (2-class)
@@ -226,7 +238,7 @@ Usage: uv run python data/auto_label_qwen3_vl.py [args]
   --device         (cuda|mps|cpu, auto-detected)        — Inference device
   --max-new-tokens (int, default: 1024)                 — Max VLM generation tokens per image
 ```
-> **When to use**: If SAM3 access is not approved (gated model), use Qwen3-VL instead. It is ungated,
+> **When to use**: If SAM3 access is not approved (gated model), use Qwen 3.5 instead. It is ungated,
 > requires no HuggingFace approval, and produces byte-compatible YOLO-format output.
 > The 8B model needs ~16GB VRAM (A40 has 48GB). For less VRAM, use `--model-id Qwen/Qwen3-VL-4B-Instruct`.
 
@@ -308,7 +320,7 @@ Share these **progressively** as participants reach each phase. Do not dump them
 The relationship between data quantity and mAP50 follows a saturating exponential curve (R^2 = 0.97). With the original (poor) labels, the asymptote is mAP50 ~0.527 — no amount of additional data will push past that ceiling. Switching to improved labels broke through to 0.633. This is the single most important takeaway of the workshop.
 
 ### Insight 2 — Prompt engineering matters for auto-labeling
-The minimal prompt `"helmet. person."` finds 2.2x more helmets than the verbose prompt `"hard hat. safety helmet. person."`. Do NOT reveal this upfront. Let participants discover that prompt engineering matters for auto-labeling, just as it matters for LLMs.
+SAM3 HF takes one concept per call — the labeling script runs separate calls for each concept. The broad single-concept prompt `"helmet"` finds 2.2x more helmets than verbose alternatives like `"safety helmet"` or `"hard hat"`. This mirrors LLM prompt sensitivity: simpler, more direct prompts often outperform verbose ones. **Bonus:** The negative prompt `"person not wearing a hard hat"` fails entirely — CLIP embeddings cannot represent absence, the visual equivalent of LLMs struggling with negation. Do NOT reveal this upfront. Let participants discover that prompt engineering matters for auto-labeling, just as it matters for LLMs.
 
 ### Insight 3 — 2-class beats 3-class
 The `no_hardhat` class achieves only 25.5% recall across all experiments. Every single error is a false negative (missed detection), not a misclassification. The 2-class approach (hardhat + person with spatial post-processing) is fundamentally better architecture.
@@ -337,7 +349,9 @@ SAM3 labels produce mAP50 0.593, detecting nearly 2x more objects per image than
 
 7. **Use pre-baked results as fallback.** If training takes too long or GPU resources are limited, point to `data/ppe_results/`. The workshop must keep moving.
 
-8. **Health checks first.** When a participant starts, suggest verifying their setup:
+8. **Frame the golden rule.** "Detect THINGS with models, check RELATIONSHIPS with code." Models find objects (hardhats, persons). Logic about how they relate ("is this person wearing that helmet?") belongs in post-processing code, not the model. This is the central architectural insight.
+
+9. **Health checks first.** When a participant starts, suggest verifying their setup:
    ```bash
    python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
    python -c "from ultralytics import YOLO; print('Ultralytics OK')"

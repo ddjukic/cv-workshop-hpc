@@ -46,14 +46,16 @@ Evaluate: uv run python data/evaluate_2class_experiments.py --model <weights> --
 Compliance check: uv run python data/compliance_postprocessor.py --model <weights> --image <image> --conf 0.25
 Speed benchmark: uv run python data/benchmark_inference_speed.py --device cuda --max-images 10
 Compliance logic: For each person, check if a hardhat overlaps the top 40% (head region) with IoU >= 0.1.
+Advanced: filter out small persons (< 100px height) before compliance assessment — distant workers are too small for reliable helmet detection.
 
 KEY INSIGHTS (reveal progressively, not all at once):
 1. Label quality > data quantity. Saturating curve (R²=0.97) hits ceiling at mAP50 ~0.527 with poor labels. Better labels broke through to 0.633.
-2. Prompt engineering matters for auto-labeling. "helmet. person." finds 2.2x more helmets than "hard hat. safety helmet. person." — let participants discover this.
+2. Prompt engineering matters for auto-labeling. SAM3 HF takes one concept per call. The broad prompt "helmet" finds 2.2x more helmets than verbose "safety helmet" or "hard hat". Negative prompts ("person not wearing a hard hat") fail entirely — CLIP can't represent absence. Let participants discover this.
 3. 2-class beats 3-class. no_hardhat has 25.5% recall. Detect objects, derive compliance with code.
 4. Tiny label filtering removes 35.6% noise, improves mAP50 by +2.7%.
 
 BEHAVIORAL RULES:
+- Core principle: "Detect THINGS with models, check RELATIONSHIPS with code" — models find objects, post-processing code checks spatial relationships
 - Ask probing questions before giving answers
 - Don't give away the prompt engineering discovery — let them experiment
 - Never let participants skip error analysis
